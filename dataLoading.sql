@@ -9,7 +9,7 @@ CREATE TABLE #TempBranch (
 );
 GO
 
-BULK INSERT #TempBranch s
+BULK INSERT #TempBranch 
 FROM 'c:\Users\barte\Documents\studia\PG\DataWarehouses\laboratories\project\branch.bulk'
 WITH (FIELDTERMINATOR='|', ROWTERMINATOR='\n');
 GO
