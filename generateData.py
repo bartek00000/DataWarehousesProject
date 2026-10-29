@@ -14,6 +14,7 @@ NUM_ROOMS = 1500
 NUM_GUESTS = 25000
 NUM_STAYS_T1 = 8000  # Scale this up to ~250,000 to reach 1,000,000 total fact rows (Stays + Requests + Surveys)
 NUM_STAYS_T2 = 2000
+ROOMS_PER_FLOOR = 30
 CUTOFF_DATE = datetime(2024, 12, 31)
 
 # Allowed values defined by the schema requirements
@@ -68,12 +69,32 @@ df_guests = pd.DataFrame([{
     'PhoneNumber': fake.numerify('###########')
 } for i in range(1, NUM_GUESTS + 1)])
 
-df_rooms = pd.DataFrame([{
-    'RoomID': f'R{i:05d}',
-    'FK_BranchID': random.randint(1, NUM_BRANCHES),
-    'RoomNumber': str(100 + (i % 500)), # Resets room numbers per branch roughly
-    'ApartmentType': random.choice(ROOM_TYPES)
-} for i in range(1, NUM_ROOMS + 1)])
+
+branch_room_counts = {b: 0 for b in range(1, NUM_BRANCHES + 1)}
+rooms = []
+
+for i in range(1, NUM_ROOMS + 1):
+    assigned_branch = random.randint(1, NUM_BRANCHES)
+    branch_room_counts[assigned_branch] += 1
+    
+    # Get the current total room count for this specific branch
+    current_count = branch_room_counts[assigned_branch]
+    
+    # Calculate which floor this room goes on, and its position on that floor
+    floor_number = ((current_count - 1) // ROOMS_PER_FLOOR) + 1
+    room_on_floor = ((current_count - 1) % ROOMS_PER_FLOOR) + 1
+    
+    # Combine them: Floor 1 + Room 5 = 105. Floor 2 + Room 1 = 201.
+    room_number = (floor_number * 100) + room_on_floor
+    
+    rooms.append({
+        'RoomID': f'R{i:05d}',
+        'FK_BranchID': assigned_branch,
+        'RoomNumber': str(room_number),
+        'ApartmentType': random.choice(ROOM_TYPES)
+    })
+
+df_rooms = pd.DataFrame(rooms)
 
 # 2. Generate Fact Rows (T1 & T2 logic)
 def generate_stay(stay_id, is_t2=False):

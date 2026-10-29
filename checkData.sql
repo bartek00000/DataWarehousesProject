@@ -30,5 +30,24 @@ FROM REQUEST
 WHERE FK_EmployeeID LIKE 'EMP0001%'
 GROUP BY FK_EmployeeID;
 
----Verifying Data Integration via Business Keys
+--- Veryfing room logic :
+--- 30 rooms per floor 
+SELECT TOP 50 
+    FK_BranchID, 
+    RoomID, 
+    RoomNumber
+FROM ROOM
+WHERE FK_BranchID = 1
+ORDER BY CAST(RoomNumber AS INT);
 
+SELECT 
+    FK_BranchID,
+    (CAST(RoomNumber AS INT) / 100) AS FloorNumber,
+    COUNT(*) AS RoomsOnFloor
+FROM ROOM
+GROUP BY 
+    FK_BranchID, 
+    (CAST(RoomNumber AS INT) / 100)
+ORDER BY 
+    FK_BranchID, 
+    FloorNumber;
