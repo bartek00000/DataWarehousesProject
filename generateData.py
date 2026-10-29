@@ -137,7 +137,12 @@ def add_stay_entries(is_t2=False):
 
     # 30% chance of multiple guests (family/couple) sharing the same room
     is_family = random.random() < 0.3
-    num_guests_in_room = 2 if is_family else 1
+    num_guests_in_room = random.choices(
+        [1, 2, 3, 4, 5, 6],
+        weights=[0.55, 0.25, 0.10, 0.05, 0.03, 0.02]
+    )[0]
+
+    guest_ids = random.sample(range(1, NUM_GUESTS + 1), num_guests_in_room)
 
     guest_ids = random.sample(range(1, NUM_GUESTS + 1), num_guests_in_room)
 
