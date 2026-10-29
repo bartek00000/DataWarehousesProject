@@ -1,3 +1,6 @@
+CREATE DATABASE MarbleGuestRequest
+GO
+
 USE MarbleGuestRequest;
 GO
 
