@@ -50,11 +50,11 @@ df_branches_csv = pd.DataFrame(branches_data)
 # NO BranchID in branch.bulk -> IDENTITY in SQL Server will auto-generate it
 df_branches_db = df_branches_csv[['Branch Name']].rename(columns={'Branch Name': 'Name'})
 
-# 2. Generate Dimensions: EMPLOYEES (Ensuring EXACTLY ONE Head Manager per Branch)
+# 2. Generate Dimensions: EMPLOYEES (Fair & Even Distribution per Branch)
 employees_csv_list = []
 employees_db_list = []
 
-# Step A: Create exactly 1 Head Manager for each Branch
+# Step A: Exactly 1 Head Manager for each Branch
 for b_id in range(1, NUM_BRANCHES + 1):
     emp_id = f'EMP{len(employees_csv_list) + 1:04d}'
     fname, lname = fake.first_name(), fake.last_name()
@@ -71,16 +71,27 @@ for b_id in range(1, NUM_BRANCHES + 1):
     })
     employees_db_list.append({'EmployeeID': emp_id, 'Name': fname, 'Surname': lname})
 
-# Step B: Create remaining employees distributed across branches with other roles
-for i in range(NUM_BRANCHES + 1, NUM_EMPLOYEES + 1):
-    emp_id = f'EMP{i:04d}'
+# Step B: Fair & Even distribution of remaining roles across all branches (Round-Robin)
+num_remaining = NUM_EMPLOYEES - NUM_BRANCHES
+role_counts = {role: num_remaining // len(ROLES_EXCEPT_MANAGER) for role in ROLES_EXCEPT_MANAGER}
+for i in range(num_remaining % len(ROLES_EXCEPT_MANAGER)):
+    role_counts[ROLES_EXCEPT_MANAGER[i]] += 1
+
+all_remaining_roles = []
+for role, count in role_counts.items():
+    all_remaining_roles.extend([role] * count)
+random.shuffle(all_remaining_roles)
+
+for idx, role in enumerate(all_remaining_roles):
+    b_id = (idx % NUM_BRANCHES) + 1  # Round-robin assignment guarantees every hotel gets every group!
+    emp_id = f'EMP{len(employees_csv_list) + 1:04d}'
     fname, lname = fake.first_name(), fake.last_name()
     employees_csv_list.append({
         'EmployeeID': emp_id,
-        'FK_BranchID': random.randint(1, NUM_BRANCHES),
+        'FK_BranchID': b_id,
         'FirstName': fname,
         'LastName': lname,
-        'Role': random.choice(ROLES_EXCEPT_MANAGER),
+        'Role': role,
         'Education': random.choice(EDUCATION),
         'Date of acceptance for work on the current position': fake.date_between(start_date='-5y',
                                                                                  end_date='-2y').strftime('%Y-%m-%d'),
@@ -179,7 +190,6 @@ while len(stays) < NUM_STAYS_T1:
     add_stay_entries(is_t2=False)
 
 # --- T2: DIMENSION CHANGE ---
-# Promote EMP0001 (or update the first manager) for SCD Type 2
 promoted_emp = employees_csv_list[0].copy()
 promoted_emp['EmployeeID'] = 'EMP0001-V2'
 promoted_emp['Role'] = 'Head Manager'
@@ -255,4 +265,4 @@ pd.DataFrame(stays).to_csv('stay.bulk', index=False, header=False, sep='|')
 pd.DataFrame(requests).to_csv('request.bulk', index=False, header=False, sep='|')
 pd.DataFrame(surveys).to_csv('survey.bulk', index=False, header=False, sep='|')
 
-print("Data generation complete. Exactly 1 manager per branch assured, exported CSVs and BULK files.")
+print("Data generation complete. Fair role distribution assured across all hotel branches.")
