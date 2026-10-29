@@ -4,7 +4,7 @@ GO
 USE MarbleGuestRequest;
 GO
 
--- 1. Load Dimension: BRANCH (przez tabelę tymczasową bez kolumny ID)
+-- 1. Load Dimension: BRANCH (przez tabelę tymczasową bez kolumny ID) xd
 CREATE TABLE #TempBranch (
     Name VARCHAR(30) NOT NULL
 );
