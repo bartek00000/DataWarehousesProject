@@ -27,14 +27,14 @@ REQUEST_CATEGORIES = [
     'transportation request', 'equipment issue', 'ordering a meal to a specific room',
     'loud neighbor complaint', 'bad service complaint', 'other complaint'
 ]
-ROLES = ['Receptionist', 'Housekeeper', 'Technician', 'Head Manager', 'Kitchen staff']
+ROLES_EXCEPT_MANAGER = ['Receptionist', 'Housekeeper', 'Technician', 'Kitchen staff']
 EDUCATION = ['Middle school', 'Graduate', 'First degree', 'Second degree']
 
 # Rating distribution (weighted to ensure average overall rating is close to ~7.0)
 RATING_CHOICES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 RATING_WEIGHTS = [1, 2, 3, 5, 8, 15, 30, 20, 12, 4]
 
-# 1. Generate Dimensions
+# 1. Generate Dimensions: BRANCHES
 branches_data = []
 for i in range(1, NUM_BRANCHES + 1):
     branches_data.append({
@@ -50,9 +50,29 @@ df_branches_csv = pd.DataFrame(branches_data)
 # NO BranchID in branch.bulk -> IDENTITY in SQL Server will auto-generate it
 df_branches_db = df_branches_csv[['Branch Name']].rename(columns={'Branch Name': 'Name'})
 
+# 2. Generate Dimensions: EMPLOYEES (Ensuring EXACTLY ONE Head Manager per Branch)
 employees_csv_list = []
 employees_db_list = []
-for i in range(1, NUM_EMPLOYEES + 1):
+
+# Step A: Create exactly 1 Head Manager for each Branch
+for b_id in range(1, NUM_BRANCHES + 1):
+    emp_id = f'EMP{len(employees_csv_list) + 1:04d}'
+    fname, lname = fake.first_name(), fake.last_name()
+    employees_csv_list.append({
+        'EmployeeID': emp_id,
+        'FK_BranchID': b_id,
+        'FirstName': fname,
+        'LastName': lname,
+        'Role': 'Head Manager',
+        'Education': 'Second degree',
+        'Date of acceptance for work on the current position': fake.date_between(start_date='-5y',
+                                                                                 end_date='-2y').strftime('%Y-%m-%d'),
+        'Date of birth': fake.date_of_birth(minimum_age=30, maximum_age=60).strftime('%Y-%m-%d')
+    })
+    employees_db_list.append({'EmployeeID': emp_id, 'Name': fname, 'Surname': lname})
+
+# Step B: Create remaining employees distributed across branches with other roles
+for i in range(NUM_BRANCHES + 1, NUM_EMPLOYEES + 1):
     emp_id = f'EMP{i:04d}'
     fname, lname = fake.first_name(), fake.last_name()
     employees_csv_list.append({
@@ -60,7 +80,7 @@ for i in range(1, NUM_EMPLOYEES + 1):
         'FK_BranchID': random.randint(1, NUM_BRANCHES),
         'FirstName': fname,
         'LastName': lname,
-        'Role': random.choice(ROLES),
+        'Role': random.choice(ROLES_EXCEPT_MANAGER),
         'Education': random.choice(EDUCATION),
         'Date of acceptance for work on the current position': fake.date_between(start_date='-5y',
                                                                                  end_date='-2y').strftime('%Y-%m-%d'),
@@ -128,21 +148,17 @@ stay_id_counter = 1
 request_id_counter, survey_id_counter = 1, 1
 
 
-# Helper function to add stays (supports single guests as well as couples/families sharing a room)
+# Helper function to add stays (supports group / family stays from 1 up to 6 guests sharing a room)
 def add_stay_entries(is_t2=False):
     global stay_id_counter
     checkin, checkout = generate_stay_timestamps(is_t2)
     room_id = random.choice(df_rooms['RoomID'].tolist())
     meal = random.choice(MEAL_OFFERS)
 
-    # 30% chance of multiple guests (family/couple) sharing the same room
-    is_family = random.random() < 0.3
     num_guests_in_room = random.choices(
         [1, 2, 3, 4, 5, 6],
         weights=[0.55, 0.25, 0.10, 0.05, 0.03, 0.02]
     )[0]
-
-    guest_ids = random.sample(range(1, NUM_GUESTS + 1), num_guests_in_room)
 
     guest_ids = random.sample(range(1, NUM_GUESTS + 1), num_guests_in_room)
 
@@ -163,6 +179,7 @@ while len(stays) < NUM_STAYS_T1:
     add_stay_entries(is_t2=False)
 
 # --- T2: DIMENSION CHANGE ---
+# Promote EMP0001 (or update the first manager) for SCD Type 2
 promoted_emp = employees_csv_list[0].copy()
 promoted_emp['EmployeeID'] = 'EMP0001-V2'
 promoted_emp['Role'] = 'Head Manager'
@@ -238,4 +255,4 @@ pd.DataFrame(stays).to_csv('stay.bulk', index=False, header=False, sep='|')
 pd.DataFrame(requests).to_csv('request.bulk', index=False, header=False, sep='|')
 pd.DataFrame(surveys).to_csv('survey.bulk', index=False, header=False, sep='|')
 
-print("Data generation complete. Exported CSVs and BULK files (branch.bulk & guest.bulk created without IDs).")
+print("Data generation complete. Exactly 1 manager per branch assured, exported CSVs and BULK files.")
