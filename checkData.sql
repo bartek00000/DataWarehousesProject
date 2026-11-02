@@ -18,14 +18,31 @@ SELECT EmployeeID, Name, Surname
 FROM EMPLOYEE 
 WHERE EmployeeID LIKE 'EMP0001%';
 
-SELECT 
-    FK_EmployeeID, 
-    COUNT(*) AS HandledRequests,
-    MIN(RequestTime) AS FirstRequestTime, 
-    MAX(RequestTime) AS LastRequestTime
-FROM REQUEST
-WHERE FK_EmployeeID LIKE 'EMP0001%'
-GROUP BY FK_EmployeeID;
+-- 2. VERIFY RULE: Head managers cannot handle any requests
+SELECT r.RequestID, r.FK_EmployeeID, e.Name, e.Surname
+FROM REQUEST r
+JOIN EMPLOYEE e ON r.FK_EmployeeID = e.EmployeeID
+WHERE e.EmployeeID IN (
+    -- Identify employees who have served as a Head Manager in csv logs
+    SELECT EmployeeID FROM hotel_employees WHERE Role = 'Head Manager' -- (or checked via application metadata log)
+);
+-- Alternatively, cross-check request counts by employee role if logged in staging tables.
+GO
+
+-- 3. Verify Room Expansion / Renovations (Checking total rooms count & sequence)
+SELECT
+    FK_BranchID,
+    COUNT(*) AS TotalRoomsPerBranch
+FROM ROOM
+GROUP BY FK_BranchID
+ORDER BY FK_BranchID;
+GO
+
+-- 4. Verify Dimension Changes: Check if roles changed properly between T1 and T2 for promoted staff
+SELECT EmployeeID, FirstName, LastName, Role, [Date of acceptance for work on the current position]
+FROM OPENROWSET(BULK 'hotel_employees.csv', FORMAT = 'CSV', PARSER_VERSION = '2.0', FIRSTROW = 2) -- (or check staging table)
+WHERE Role = 'Head Manager';
+GO
 
 SELECT TOP 50 
     FK_BranchID, 
