@@ -66,3 +66,28 @@ BULK INSERT SURVEY
 FROM 'c:\Users\barte\Documents\studia\PG\DataWarehouses\laboratories\project\survey.bulk'
 WITH (FIELDTERMINATOR='|', ROWTERMINATOR='\n');
 GO
+
+CREATE TABLE HOTEL_EMPLOYEE_DETAILS (
+    EmployeeID VARCHAR(11),
+    FK_BranchID INT NOT NULL,
+    FirstName VARCHAR(30) NOT NULL,
+    LastName VARCHAR(40) NOT NULL,
+    Role VARCHAR(30) NOT NULL,
+    Education VARCHAR(30) NOT NULL,
+    DateOfAcceptance DATE NOT NULL,
+    DateOfBirth DATE NOT NULL,
+    PRIMARY KEY (EmployeeID, DateOfAcceptance),
+    FOREIGN KEY (FK_BranchID) REFERENCES BRANCH(BranchID)
+)
+GO
+
+BULK INSERT HOTEL_EMPLOYEE_DETAILS
+FROM 'c:\Users\barte\Documents\studia\PG\DataWarehouses\laboratories\project\hotel_employees.csv'
+WITH (
+    FORMAT = 'CSV',
+    FIRSTROW = 2,
+    FIELDTERMINATOR = ',',
+    ROWTERMINATOR = '\n',
+    TABLOCK
+)
+GO

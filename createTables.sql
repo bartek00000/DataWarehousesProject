@@ -1,7 +1,6 @@
 USE MarbleGuestRequest;
 GO
 
--- Dimension: BRANCH (zaktualizowano BranchID na IDENTITY)
 CREATE TABLE BRANCH (
     BranchID INT IDENTITY(1,1) PRIMARY KEY,
     Name VARCHAR(30) NOT NULL

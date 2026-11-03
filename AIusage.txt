@@ -1,0 +1,6 @@
+We used AI to generate the data_generator python file after giving it the requirement specification file.
+Data integration checks were developed to verify if AI-generated data is valid. If inconsistencies were found,
+we wrote a prompt to correct the data generator script. In this way cardinality between survey and stay tables
+was fixed, requests number per guest was updated, the number of guests in one room was changed to be between 1 and 6 instead of 1 only,
+request and check-in/out times were modified to be recorded with accuracy to a second (not to an hour),
+one head manager per branch was established (except for promotion case), etc. Script for checks is also included.

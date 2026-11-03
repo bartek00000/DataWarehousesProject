@@ -1,70 +1,66 @@
 USE MarbleGuestRequest;
 GO
 
-SELECT 
-    CASE 
-        WHEN CheckinDate <= '2024-12-31' THEN 'T1 (Historical Snapshot)' 
-        ELSE 'T2 (Incremental Snapshot)' 
+SELECT
+    CASE
+        WHEN CheckinDate <= '2024-12-31' THEN 'T1 (Historical Snapshot)'
+        ELSE 'T2 (Incremental Snapshot)'
     END AS Snapshot_Period,
     COUNT(*) AS NumberOfStays
 FROM STAY
-GROUP BY 
-    CASE 
-        WHEN CheckinDate <= '2024-12-31' THEN 'T1 (Historical Snapshot)' 
-        ELSE 'T2 (Incremental Snapshot)' 
+GROUP BY
+    CASE
+        WHEN CheckinDate <= '2024-12-31' THEN 'T1 (Historical Snapshot)'
+        ELSE 'T2 (Incremental Snapshot)'
     END;
 
-SELECT EmployeeID, Name, Surname 
-FROM EMPLOYEE 
-WHERE EmployeeID LIKE 'EMP0001%';
+-- Num of employees hired in t1 and t2
+SELECT
+    Role,
+    CASE
+        WHEN DateOfAcceptance <= '2024-12-31' THEN 'T1 (hired before)'
+        ELSE 'T2 (hired after)'
+    END AS hiring_time,
+    COUNT(*) AS NumberOfEmployees
+FROM HOTEL_EMPLOYEE_DETAILS
+GROUP BY
+    Role,
+     CASE
+        WHEN DateOfAcceptance <= '2024-12-31' THEN 'T1 (hired before)'
+        ELSE 'T2 (hired after)'
+    END
+    ORDER BY Role;
 
--- 2. VERIFY RULE: Head managers cannot handle any requests
-SELECT r.RequestID, r.FK_EmployeeID, e.Name, e.Surname
+-- checking new Head Manager...
+SELECT * FROM HOTEL_EMPLOYEE_DETAILS
+    WHERE EmployeeID = 'EMP0021' AND DateOfAcceptance <= '2024-12-31'
+SELECT * FROM HOTEL_EMPLOYEE_DETAILS
+    WHERE EmployeeID = 'EMP0021' AND DateOfAcceptance > '2024-12-31'
+
+-- Head managers cannot handle any requests
+SELECT r.RequestID, r.FK_EmployeeID, e.Name, e.SurnamE
 FROM REQUEST r
 JOIN EMPLOYEE e ON r.FK_EmployeeID = e.EmployeeID
 WHERE e.EmployeeID IN (
-    -- Identify employees who have served as a Head Manager in csv logs
-    SELECT EmployeeID FROM hotel_employees WHERE Role = 'Head Manager' -- (or checked via application metadata log)
-);
--- Alternatively, cross-check request counts by employee role if logged in staging tables.
-GO
+    SELECT EmployeeID FROM HOTEL_EMPLOYEE_DETAILS WHERE Role = 'Head Manager' AND r.RequestTime >  DateOfAcceptance
+)
 
--- 3. Verify Room Expansion / Renovations (Checking total rooms count & sequence)
+-- Verify room additions
 SELECT
     FK_BranchID,
+    SUM(CASE WHEN CAST(SUBSTRING(RoomID, 2, LEN(RoomID)) AS INT) <= 1400 THEN 1 ELSE 0 END) AS T1_RoomsCount,
+    SUM(CASE WHEN CAST(SUBSTRING(RoomID, 2, LEN(RoomID)) AS INT) > 1400 THEN 1 ELSE 0 END) AS T2_NewRoomsExpanded,
     COUNT(*) AS TotalRoomsPerBranch
 FROM ROOM
 GROUP BY FK_BranchID
-ORDER BY FK_BranchID;
-GO
+ORDER BY FK_BranchID
 
--- 4. Verify Dimension Changes: Check if roles changed properly between T1 and T2 for promoted staff
-SELECT EmployeeID, FirstName, LastName, Role, [Date of acceptance for work on the current position]
-FROM OPENROWSET(BULK 'hotel_employees.csv', FORMAT = 'CSV', PARSER_VERSION = '2.0', FIRSTROW = 2) -- (or check staging table)
-WHERE Role = 'Head Manager';
-GO
+-- Verify dimension change; check if roles changed properly between T1 and T2 for promoted staff
+SELECT EmployeeID, FirstName, LastName, Role, DateOfAcceptance
+FROM HOTEL_EMPLOYEE_DETAILS
+WHERE Role = 'Head Manager'
 
-SELECT TOP 50 
-    FK_BranchID, 
-    RoomID, 
-    RoomNumber
-FROM ROOM
-WHERE FK_BranchID = 1
-ORDER BY CAST(RoomNumber AS INT);
-
-SELECT 
-    FK_BranchID,
-    (CAST(RoomNumber AS INT) / 100) AS FloorNumber,
-    COUNT(*) AS RoomsOnFloor
-FROM ROOM
-GROUP BY 
-    FK_BranchID, 
-    (CAST(RoomNumber AS INT) / 100)
-ORDER BY 
-    FK_BranchID, 
-    FloorNumber;
-
-SELECT 
+SELECT
     b.BranchID,
     b.Name AS BranchName,
     COUNT(s.StayID) AS TotalStays
@@ -74,7 +70,7 @@ JOIN STAY s ON rm.RoomID = s.FK_RoomID
 GROUP BY b.BranchID, b.Name
 ORDER BY b.BranchID;
 
-SELECT 
+SELECT
     FK_BranchID,
     RoomNumber,
     COUNT(*) AS TimesUsedInBranch
@@ -82,44 +78,53 @@ FROM ROOM
 GROUP BY FK_BranchID, RoomNumber
 HAVING COUNT(*) > 1;
 
-SELECT DISTINCT ApartmentType 
-FROM ROOM 
+SELECT DISTINCT ApartmentType
+FROM ROOM
 WHERE ApartmentType NOT IN ('Standard', 'Deluxe', 'Superior');
 
-SELECT DISTINCT MealOffer 
-FROM STAY 
+SELECT DISTINCT MealOffer
+FROM STAY
 WHERE MealOffer NOT IN ('None', 'Breakfast Only', 'Supper Only', 'Breakfast and Supper');
 
-SELECT DISTINCT Category 
-FROM REQUEST 
+SELECT DISTINCT Category
+FROM REQUEST
 WHERE Category NOT IN (
-    'extra pillows', 'amenities restock', 'additional toilet paper', 
-    'ordering room service', 'towel exchange', 'wake-up call', 
-    'transportation request', 'equipment issue', 'ordering a meal to a specific room', 
+    'extra pillows', 'amenities restock', 'additional toilet paper',
+    'ordering room service', 'towel exchange', 'wake-up call',
+    'transportation request', 'equipment issue', 'ordering a meal to a specific room',
     'loud neighbor complaint', 'bad service complaint', 'other complaint'
-);
+)
 
 SELECT SurveyID, OverallRating, StaffRating, ResponseRating
-FROM SURVEY 
+FROM SURVEY
 WHERE OverallRating < 1 OR OverallRating > 10
    OR StaffRating < 1 OR StaffRating > 10
    OR ResponseRating < 1 OR ResponseRating > 10;
 
 SELECT StayID, CheckinDate, CheckOutDate
 FROM STAY
-WHERE CheckOutDate <= CheckinDate;
+WHERE CheckOutDate <= CheckinDate
 
 SELECT RequestID, RequestTime, ResolutionTime
 FROM REQUEST
-WHERE ResolutionTime <= RequestTime;
+WHERE ResolutionTime <= RequestTime
 
 
--- VERIFYING SURVEY MANDATORY 1:1 RELATIONSHIP
-SELECT StayID 
-FROM STAY 
-WHERE StayID NOT IN (SELECT FK_StayID FROM SURVEY);
+/* checking if guests with stay that did not fill in the survey */
+Select GuestID, COUNT(StayID), COUNT(SurveyID) AS survey_count from GUEST
+	JOIN STAY ON GuestID=FK_GuestID
+	LEFT JOIN SURVEY ON StayID=FK_STAYID
+GROUP BY GuestID HAVING COUNT(SurveyID) < 1;
 
-SELECT FK_StayID, COUNT(SurveyID) AS SurveyCount
-FROM SURVEY
-GROUP BY FK_StayID
-HAVING COUNT(SurveyID) > 1;
+/* checking if some rooms having more than one guest in a room during one stay */
+SELECT
+    FK_RoomID,
+    CheckInDate,
+    CheckOutDate,
+    COUNT(FK_GuestID) AS guest_count,
+    STRING_AGG(CAST(FK_GuestID AS VARCHAR), ', ') AS guest_ids,
+    STRING_AGG(StayID, ', ') AS stay_ids
+FROM STAY
+GROUP BY FK_RoomID, CheckInDate, CheckOutDate
+HAVING COUNT(FK_GuestID) >= 1
+ORDER BY guest_count DESC, CheckInDate;
