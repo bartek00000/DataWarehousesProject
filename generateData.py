@@ -59,12 +59,15 @@ df_branches_db = df_branches_csv[['Branch Name']].rename(
     columns={'Branch Name': 'Name'}
 )
 
-# 2. GENERATE EMPLOYEES (T1 Baseline)
+# 2. GENERATE EMPLOYEES (T1 Baseline with Strict Roles & Hierarchy via Boss Column)
 employees_csv_list = []
-employees_db_dict = {}  # Unique EmployeeID -> {Name, Surname}
+employees_db_dict = {}
 employee_meta = {}
 
-# Step A: 1 Head Manager per branch at T1
+branch_managers = {}
+branch_department_leads = {b_id: {} for b_id in range(1, NUM_BRANCHES + 1)}
+
+# Step A: 1 Head Manager per branch at T1 (Boss = None)
 for b_id in range(1, NUM_BRANCHES + 1):
   emp_id = f'EMP{len(employees_db_dict) + 1:04d}'
   fname, lname = fake.first_name(), fake.last_name()
@@ -78,12 +81,14 @@ for b_id in range(1, NUM_BRANCHES + 1):
       'FK_BranchID': b_id,
       'FirstName': fname,
       'LastName': lname,
-      'Role': 'Head Manager',
+      'Role': 'Head Manager',  # STRICT ROLE
       'Education': 'Second degree',
       'Date of acceptance for work on the current position': hire_date,
       'Date of birth': dob,
+      'Boss': None,
   })
   employees_db_dict[emp_id] = {'Name': fname, 'Surname': lname}
+  branch_managers[b_id] = emp_id
   employee_meta[emp_id] = {
       'BranchID': b_id,
       'Role': 'Head Manager',
@@ -95,26 +100,63 @@ for b_id in range(1, NUM_BRANCHES + 1):
       'DOB': dob,
   }
 
-# Step B: Staff across branches at T1
+# Step B: Department Leads (1 per role category per branch, keeping exact role name)
 num_remaining_t1 = NUM_EMPLOYEES_T1 - NUM_BRANCHES
+for b_id in range(1, NUM_BRANCHES + 1):
+  for base_role in ROLES_EXCEPT_MANAGER:
+    emp_id = f'EMP{len(employees_db_dict) + 1:04d}'
+    fname, lname = fake.first_name(), fake.last_name()
+    dob = fake.date_of_birth(minimum_age=25, maximum_age=55).strftime(
+        '%Y-%m-%d'
+    )
+    hire_date = fake.date_between(start_date='-4y', end_date='-2y').strftime(
+        '%Y-%m-%d'
+    )
+
+    employees_csv_list.append({
+        'EmployeeID': emp_id,
+        'FK_BranchID': b_id,
+        'FirstName': fname,
+        'LastName': lname,
+        'Role': base_role,  # STRICT ROLE (e.g., 'Receptionist')
+        'Education': 'First degree',
+        'Date of acceptance for work on the current position': hire_date,
+        'Date of birth': dob,
+        'Boss': branch_managers[b_id],  # Reports to Head Manager
+    })
+    employees_db_dict[emp_id] = {'Name': fname, 'Surname': lname}
+    branch_department_leads[b_id][base_role] = emp_id
+    employee_meta[emp_id] = {
+        'BranchID': b_id,
+        'Role': base_role,
+        'Active': True,
+        'IsManager': False,
+        'FirstName': fname,
+        'LastName': lname,
+        'Education': 'First degree',
+        'DOB': dob,
+    }
+
+# Remaining regular staff members (reporting to their respective department lead)
+num_regular_staff = num_remaining_t1 - (len(ROLES_EXCEPT_MANAGER) * NUM_BRANCHES)
 role_counts = {
-    role: num_remaining_t1 // len(ROLES_EXCEPT_MANAGER)
+    role: num_regular_staff // len(ROLES_EXCEPT_MANAGER)
     for role in ROLES_EXCEPT_MANAGER
 }
-for i in range(num_remaining_t1 % len(ROLES_EXCEPT_MANAGER)):
+for i in range(num_regular_staff % len(ROLES_EXCEPT_MANAGER)):
   role_counts[ROLES_EXCEPT_MANAGER[i]] += 1
 
-all_remaining_roles = []
+all_regular_roles = []
 for role, count in role_counts.items():
-  all_remaining_roles.extend([role] * count)
-random.shuffle(all_remaining_roles)
+  all_regular_roles.extend([role] * count)
+random.shuffle(all_regular_roles)
 
-for idx, role in enumerate(all_remaining_roles):
+for idx, role in enumerate(all_regular_roles):
   b_id = (idx % NUM_BRANCHES) + 1
   emp_id = f'EMP{len(employees_db_dict) + 1:04d}'
   fname, lname = fake.first_name(), fake.last_name()
-  dob = fake.date_of_birth(minimum_age=20, maximum_age=60).strftime('%Y-%m-%d')
-  hire_date = fake.date_between(start_date='-5y', end_date='-2y').strftime(
+  dob = fake.date_of_birth(minimum_age=20, maximum_age=50).strftime('%Y-%m-%d')
+  hire_date = fake.date_between(start_date='-3y', end_date='-1y').strftime(
       '%Y-%m-%d'
   )
 
@@ -123,10 +165,13 @@ for idx, role in enumerate(all_remaining_roles):
       'FK_BranchID': b_id,
       'FirstName': fname,
       'LastName': lname,
-      'Role': role,
+      'Role': role,  # STRICT ROLE
       'Education': random.choice(EDUCATION),
       'Date of acceptance for work on the current position': hire_date,
       'Date of birth': dob,
+      'Boss': branch_department_leads[b_id][
+          role
+      ],  # Reports to Department Lead
   })
   employees_db_dict[emp_id] = {'Name': fname, 'Surname': lname}
   employee_meta[emp_id] = {
@@ -140,9 +185,7 @@ for idx, role in enumerate(all_remaining_roles):
       'DOB': dob,
   }
 
-# --- T2 PROMOTIONS, TURNOVER & EXTENSIONS ---
-
-# 1. Fire non-managers (Turnover)
+# --- T2 PROMOTIONS & NEW HIRES ---
 active_non_managers = [
     eid
     for eid, meta in employee_meta.items()
@@ -154,43 +197,34 @@ terminated_emps = random.sample(
 for eid in terminated_emps:
   employee_meta[eid]['Active'] = False
 
-# 2. Terminate Branch 1 Head Manager & Promote Branch 1 Receptionist
-branch_1_managers = [
-    eid
-    for eid, meta in employee_meta.items()
-    if meta['BranchID'] == 1 and meta['Role'] == 'Head Manager'
-]
-old_manager_id = branch_1_managers[0]
-employee_meta[old_manager_id]['Active'] = False  # Former manager departs
+old_manager_id = branch_managers[1]
+employee_meta[old_manager_id]['Active'] = False
 
-# Find Receptionist at Branch 1
 branch_1_receptionists = [
     eid
     for eid, meta in employee_meta.items()
     if meta['BranchID'] == 1 and meta['Role'] == 'Receptionist' and meta['Active']
 ]
 promoted_emp_id = branch_1_receptionists[0]
-
-# APPEND SECOND RECORD FOR PROMOTED EMPLOYEE (Preserving career history from T1)
 promoted_info = employee_meta[promoted_emp_id]
 promotion_date = (CUTOFF_DATE + timedelta(days=2)).strftime('%Y-%m-%d')
 
 employees_csv_list.append({
-    'EmployeeID': promoted_emp_id,  # Same EmployeeID!
+    'EmployeeID': promoted_emp_id,
     'FK_BranchID': 1,
     'FirstName': promoted_info['FirstName'],
     'LastName': promoted_info['LastName'],
-    'Role': 'Head Manager',  # Promoted Role
+    'Role': 'Head Manager',  # Promoted to Head Manager role
     'Education': promoted_info['Education'],
     'Date of acceptance for work on the current position': promotion_date,
     'Date of birth': promoted_info['DOB'],
+    'Boss': None,
 })
 
-# Update operational tracking for T2 requests
 employee_meta[promoted_emp_id]['Role'] = 'Head Manager'
 employee_meta[promoted_emp_id]['IsManager'] = True
 
-# 3. New Hires at T2
+# T2 New Hires
 NUM_NEW_HIRES_T2 = 50
 for _ in range(NUM_NEW_HIRES_T2):
   b_id = random.randint(1, NUM_BRANCHES)
@@ -207,10 +241,11 @@ for _ in range(NUM_NEW_HIRES_T2):
       'FK_BranchID': b_id,
       'FirstName': fname,
       'LastName': lname,
-      'Role': new_role,
+      'Role': new_role,  # STRICT ROLE
       'Education': random.choice(EDUCATION),
       'Date of acceptance for work on the current position': hire_date,
       'Date of birth': dob,
+      'Boss': branch_department_leads[b_id][new_role],
   })
   employees_db_dict[emp_id] = {'Name': fname, 'Surname': lname}
   employee_meta[emp_id] = {
@@ -297,7 +332,6 @@ while len(stays) < NUM_STAYS_T1:
 while len(stays) < (NUM_STAYS_T1 + NUM_STAYS_T2):
   add_stay_entries(is_t2=True)
 
-# Generate requests for non-manager active staff
 for stay in stays:
   checkin_dt = datetime.strptime(stay['CheckinDate'], '%Y-%m-%d %H:%M:%S')
   checkout_dt = datetime.strptime(stay['CheckOutDate'], '%Y-%m-%d %H:%M:%S')
@@ -313,7 +347,6 @@ for stay in stays:
     )
     res_time = req_time + timedelta(seconds=random.randint(300, 10800))
 
-    # Promoted employee handles requests at T1 as Receptionist, but NOT at T2 as Head Manager
     if req_time <= CUTOFF_DATE:
       valid_emps = [
           eid
@@ -358,7 +391,6 @@ pd.DataFrame(employees_csv_list).to_csv(
 df_branches_csv.to_csv('hotel_branches.csv', index=False, sep=',')
 
 df_branches_db.to_csv('branch.bulk', index=False, header=False, sep='|')
-# Export distinct Employee list for EMPLOYEE table
 employees_db_list = [
     {'EmployeeID': eid, 'Name': info['Name'], 'Surname': info['Surname']}
     for eid, info in employees_db_dict.items()
@@ -373,4 +405,6 @@ pd.DataFrame(stays).to_csv('stay.bulk', index=False, header=False, sep='|')
 pd.DataFrame(requests).to_csv('request.bulk', index=False, header=False, sep='|')
 pd.DataFrame(surveys).to_csv('survey.bulk', index=False, header=False, sep='|')
 
-print('Data generation complete.')
+print(
+    'Data generation complete with strict original roles and Boss hierarchy.'
+)

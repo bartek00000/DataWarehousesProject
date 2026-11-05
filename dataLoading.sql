@@ -76,6 +76,7 @@ CREATE TABLE HOTEL_EMPLOYEE_DETAILS (
     Education VARCHAR(30) NOT NULL,
     DateOfAcceptance DATE NOT NULL,
     DateOfBirth DATE NOT NULL,
+    Boss VARCHAR(11) NULL,
     PRIMARY KEY (EmployeeID, DateOfAcceptance),
     FOREIGN KEY (FK_BranchID) REFERENCES BRANCH(BranchID)
 )
