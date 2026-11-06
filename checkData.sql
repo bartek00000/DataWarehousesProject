@@ -128,3 +128,17 @@ FROM STAY
 GROUP BY FK_RoomID, CheckInDate, CheckOutDate
 HAVING COUNT(FK_GuestID) >= 1
 ORDER BY guest_count DESC, CheckInDate;
+
+--list of all branches along with head managers
+SELECT
+    b.BranchID,
+    b.Name AS BranchName,
+    hed.EmployeeID AS HeadManagerID,
+    hed.FirstName + ' ' + hed.LastName AS HeadManagerName,
+    hed.Role,
+    hed.DateOfAcceptance
+FROM BRANCH b
+JOIN HOTEL_EMPLOYEE_DETAILS hed ON b.BranchID = hed.FK_BranchID
+WHERE hed.Boss IS NULL
+ORDER BY b.BranchID;
+GO
